@@ -14,7 +14,8 @@ CPP_ENGINE_DIR = os.path.join(BASE_DIR, "cpp_engine")
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
-import database
+# Import the upgraded database module (or rename database_crex_upgrade.py to database.py)
+import database_crex_upgrade as database
 
 # Initialize Flask App
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
@@ -31,14 +32,12 @@ def run_cpp_engine(command: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Executes the compiled C++ OOP engine via Python subprocess,
     passing structured JSON data and receiving JSON results.
-    If execution is blocked by OS environment policies (e.g. Windows Device Guard),
-    it falls back to mirror C++ OOP logic seamlessly.
+    If execution is blocked by OS environment policies, falls back to mirrored Python logic.
     """
     json_input = json.dumps(payload)
 
     if os.path.exists(ENGINE_PATH):
         try:
-            # Invoke C++ executable
             result = subprocess.run(
                 [ENGINE_PATH, command, json_input],
                 capture_output=True,
@@ -57,14 +56,10 @@ def run_cpp_engine(command: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as e:
             print(f"[C++ Subprocess Notice] Execution policy / error: {e}")
 
-    # Fallback to Mirrored C++ Logic if binary execution is restricted by OS Device Guard
     return mirrored_cpp_engine_logic(command, payload)
 
 def mirrored_cpp_engine_logic(command: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Faithful Python mirror of the C++ OOP engine classes (Player, Team, Match, Tournament)
-    ensuring 100% functionality even when OS policy blocks unsigned binaries.
-    """
+    """Faithful Python mirror of the C++ OOP engine classes."""
     if command in ("--fixtures", "-f"):
         teams = payload.get("teams", [])
         if len(teams) < 2:
@@ -75,7 +70,6 @@ def mirrored_cpp_engine_logic(command: str, payload: Dict[str, Any]) -> Dict[str
         n = len(teams)
         format_ = payload.get("format", "T20")
         
-        # Round Robin algorithm: each pair plays once
         for i in range(n):
             for j in range(i + 1, n):
                 fixtures.append({
@@ -84,7 +78,8 @@ def mirrored_cpp_engine_logic(command: str, payload: Dict[str, Any]) -> Dict[str
                     "team_a_id": teams[i]["id"],
                     "team_a_name": teams[i]["name"],
                     "team_b_id": teams[j]["id"],
-                    "team_b_name": teams[j]["name"]
+                    "team_b_name": teams[j]["name"],
+                    "match_stage": "League"
                 })
                 match_number += 1
                 
@@ -158,60 +153,6 @@ def mirrored_cpp_engine_logic(command: str, payload: Dict[str, Any]) -> Dict[str
                 "loser_name": loser_name,
                 "result_description": result_description
             },
-            "engine_source": "C++ OOP Engine (Mirrored Fallback)"
-        }
-
-    elif command in ("--points-table", "--standings", "-p"):
-        teams = payload.get("teams", [])
-        matches = payload.get("matches", [])
-
-        standings = {}
-        for t in teams:
-            standings[t["id"]] = {
-                "team_id": t["id"],
-                "team_name": t["name"],
-                "played": 0,
-                "won": 0,
-                "lost": 0,
-                "tied": 0,
-                "points": 0
-            }
-
-        for m in matches:
-            if not m.get("is_completed", True):
-                continue
-            ta_id = m.get("team_a_id")
-            tb_id = m.get("team_b_id")
-            if ta_id in standings and tb_id in standings:
-                standings[ta_id]["played"] += 1
-                standings[tb_id]["played"] += 1
-                if m.get("is_tie", False):
-                    standings[ta_id]["tied"] += 1
-                    standings[ta_id]["points"] += 1
-                    standings[tb_id]["tied"] += 1
-                    standings[tb_id]["points"] += 1
-                elif m.get("winner_id") == ta_id:
-                    standings[ta_id]["won"] += 1
-                    standings[ta_id]["points"] += 2
-                    standings[tb_id]["lost"] += 1
-                elif m.get("winner_id") == tb_id:
-                    standings[tb_id]["won"] += 1
-                    standings[tb_id]["points"] += 2
-                    standings[ta_id]["lost"] += 1
-
-        # Sort criteria: 1. Points desc, 2. Wins desc, 3. Team name asc
-        table = list(standings.values())
-        table.sort(key=lambda x: (-x["points"], -x["won"], x["team_name"].lower()))
-
-        for rank, row in enumerate(table, start=1):
-            row["rank"] = rank
-
-        return {
-            "status": "success",
-            "tournament_id": payload.get("tournament_id", 1),
-            "tournament_name": payload.get("tournament_name", "Tournament"),
-            "format": payload.get("format", "T20"),
-            "points_table": table,
             "engine_source": "C++ OOP Engine (Mirrored Fallback)"
         }
 
@@ -357,10 +298,8 @@ def create_tournament():
         if len(team_ids) < 2:
             return jsonify({"status": "error", "message": "Cannot create tournament with fewer than two teams."}), 400
 
-        # Step 1: Save Tournament in SQLite
         tournament = database.create_tournament(name, format_, team_ids)
 
-        # Step 2: Invoke C++ OOP Engine to automatically generate Round-Robin Fixtures
         engine_payload = {
             "tournament_id": tournament["id"],
             "tournament_name": tournament["name"],
@@ -371,7 +310,6 @@ def create_tournament():
 
         if engine_response.get("status") == "success":
             fixtures = engine_response.get("fixtures", [])
-            # Step 3: Persist generated fixtures to SQLite matches table
             database.save_tournament_fixtures(tournament["id"], format_, fixtures)
             tournament["fixtures"] = fixtures
             tournament["engine_source"] = engine_response.get("engine_source")
@@ -422,7 +360,6 @@ def submit_match_score(match_id):
         wickets_b = int(data.get("wickets_b", 0))
         overs_b = float(data.get("overs_b", 20.0))
 
-        # Pass scores to C++ OOP Engine to calculate winner and result
         engine_payload = {
             "match_id": match_id,
             "format": match_record["format"],
@@ -447,7 +384,6 @@ def submit_match_score(match_id):
             is_tie = calc_match.get("is_tie", False)
             result_desc = calc_match.get("result_description", "")
 
-            # Save in SQLite
             database.update_match_result(
                 match_id=match_id,
                 score_a=score_a,
@@ -473,58 +409,112 @@ def submit_match_score(match_id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ============================================================================
-# POINTS TABLE API VIA C++ ENGINE
+# CREX-STYLE SCORECARDS, NRR POINTS TABLE & PLAYOFFS API ENDPOINTS
 # ============================================================================
+
+@app.route("/api/matches/<int:match_id>/scorecard", methods=["GET"])
+def get_match_scorecard_api(match_id):
+    """Retrieve detailed batting and bowling scorecards for a specific match."""
+    try:
+        scorecard = database.get_match_scorecard(match_id)
+        return jsonify({"status": "success", "data": scorecard})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/matches/<int:match_id>/batting", methods=["POST"])
+def save_batting_entry(match_id):
+    """Add or update a player's batting performance in a match."""
+    try:
+        data = request.get_json() or {}
+        database.save_player_batting(
+            match_id=match_id,
+            innings=int(data.get("innings", 1)),
+            team_id=int(data.get("team_id")),
+            player_id=int(data.get("player_id")),
+            runs=int(data.get("runs", 0)),
+            balls=int(data.get("balls", 0)),
+            fours=int(data.get("fours", 0)),
+            sixes=int(data.get("sixes", 0)),
+            is_out=bool(data.get("is_out", False)),
+            dismissal=data.get("dismissal")
+        )
+        return jsonify({"status": "success", "message": "Batting scorecard saved successfully."})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/matches/<int:match_id>/bowling", methods=["POST"])
+def save_bowling_entry(match_id):
+    """Add or update a player's bowling performance in a match."""
+    try:
+        data = request.get_json() or {}
+        database.save_player_bowling(
+            match_id=match_id,
+            innings=int(data.get("innings", 1)),
+            team_id=int(data.get("team_id")),
+            player_id=int(data.get("player_id")),
+            overs=data.get("overs", 0.0),
+            maidens=int(data.get("maidens", 0)),
+            runs_conceded=int(data.get("runs_conceded", 0)),
+            wickets=int(data.get("wickets", 0)),
+            wides=int(data.get("wides", 0)),
+            no_balls=int(data.get("no_balls", 0))
+        )
+        return jsonify({"status": "success", "message": "Bowling scorecard saved successfully."})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/tournaments/<int:tournament_id>/standings", methods=["GET"])
 def get_tournament_standings(tournament_id):
+    """Get Net Run Rate (NRR) points table for the tournament."""
     try:
         tourney = database.get_tournament_by_id(tournament_id)
         if not tourney:
             return jsonify({"status": "error", "message": "Tournament not found."}), 404
 
-        matches = database.get_tournament_matches(tournament_id)
+        standings = database.get_points_table(tournament_id)
+        return jsonify({
+            "status": "success",
+            "data": {
+                "tournament": tourney,
+                "standings": standings
+            }
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-        # Build payload for C++ Engine
-        engine_payload = {
-            "tournament_id": tourney["id"],
-            "tournament_name": tourney["name"],
-            "format": tourney["format"],
-            "teams": tourney["teams"],
-            "matches": [
-                {
-                    "team_a_id": m["team_a_id"],
-                    "team_b_id": m["team_b_id"],
-                    "score_a": m["score_a"] or 0,
-                    "score_b": m["score_b"] or 0,
-                    "winner_id": m["winner_id"] or 0,
-                    "is_tie": bool(m["is_tie"]),
-                    "is_completed": (m["status"] == "Completed")
-                }
-                for m in matches
-            ]
-        }
+@app.route("/api/tournaments/<int:tournament_id>/player-stats", methods=["GET"])
+def get_tournament_player_stats(tournament_id):
+    """Get aggregated tournament player stats (Runs, Strike Rate, Wickets, Economy)."""
+    try:
+        stats = database.get_player_tournament_stats(tournament_id)
+        return jsonify({"status": "success", "data": stats})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-        # Invoke C++ OOP Engine to calculate points table with strict ranking rules
-        engine_response = run_cpp_engine("--points-table", engine_payload)
+@app.route("/api/tournaments/<int:tournament_id>/playoffs/generate", methods=["POST"])
+def generate_tournament_playoffs(tournament_id):
+    """Generate Qualifier 1 and Eliminator after league stage completion."""
+    try:
+        fixtures = database.generate_playoffs(tournament_id)
+        return jsonify({"status": "success", "data": fixtures, "message": "Playoffs generated successfully."})
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-        if engine_response.get("status") == "success":
-            return jsonify({
-                "status": "success",
-                "data": {
-                    "tournament": tourney,
-                    "standings": engine_response.get("points_table", []),
-                    "engine_source": engine_response.get("engine_source")
-                }
-            })
-        else:
-            return jsonify({"status": "error", "message": "Failed to calculate points table."}), 500
-
+@app.route("/api/tournaments/<int:tournament_id>/playoffs/advance", methods=["POST"])
+def advance_tournament_playoffs(tournament_id):
+    """Automatically advance winners/losers to Qualifier 2 and Final."""
+    try:
+        fixtures = database.advance_playoffs(tournament_id)
+        return jsonify({"status": "success", "data": fixtures, "message": "Playoffs advanced successfully."})
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ============================================================================
-# DEMO SEED DATA (HELPFUL FOR COLLEGE PRESENTATION & EVALUATION)
+# DEMO SEED DATA
 # ============================================================================
 
 @app.route("/api/demo/seed", methods=["POST"])
@@ -582,12 +572,10 @@ def seed_demo_data():
                 for p_name, p_role in t_info["players"]:
                     database.add_player(p_name, p_role, t["id"])
             except Exception:
-                # Team may already exist
                 existing = [x for x in database.get_all_teams() if x["name"].lower() == t_info["name"].lower()]
                 if existing:
                     created_team_ids.append(existing[0]["id"])
 
-        # Auto-create sample tournament if none exists
         tourneys = database.get_all_tournaments()
         if not tourneys and len(created_team_ids) >= 4:
             tourney = database.create_tournament("ICC Super 4 Champions Cup", "T20", created_team_ids[:4])
@@ -613,7 +601,7 @@ if __name__ == "__main__":
     database.init_db()
     port = int(os.environ.get("PORT", 5000))
     print("=" * 60)
-    print("CRICKET TOURNAMENT MANAGEMENT SYSTEM - BACKEND READY")
+    print("CRICKET TOURNAMENT MANAGEMENT SYSTEM (CREX UPGRADED) - READY")
     print(f"Server running at: http://127.0.0.1:{port}")
     print(f"C++ Engine Binary: {ENGINE_PATH} (Exists: {os.path.exists(ENGINE_PATH)})")
     print("=" * 60)
