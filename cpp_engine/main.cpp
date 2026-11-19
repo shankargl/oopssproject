@@ -233,8 +233,8 @@ void handleGenerateFixtures(const std::string& jsonInput) {
         }
     }
 
-    if (tournament.getTeams().size() < 5) {
-        std::cout << "{\"status\":\"error\",\"message\":\"At least five teams are required to create a tournament with playoffs.\"}" << std::endl;
+    if (tournament.getTeams().size() < 2) {
+        std::cout << "{\"status\":\"error\",\"message\":\"At least two teams are required to create a tournament.\"}" << std::endl;
         return;
     }
 
@@ -375,10 +375,6 @@ void runConsoleOOPDemo() {
     Team teamSouthAfrica(4, "South Africa");
     teamSouthAfrica.addPlayer(Player(401, "Kagiso Rabada", "Bowler", 4));
     teamSouthAfrica.addPlayer(Player(402, "Quinton de Kock", "Batter", 4));
-
-    Team teamNewZealand(5, "New Zealand");
-    teamNewZealand.addPlayer(Player(501, "Kane Williamson", "Batter", 5));
-    teamNewZealand.addPlayer(Player(502, "Trent Boult", "Bowler", 5));
 
     // 3. DEMONSTRATE RUNTIME POLYMORPHISM & INHERITANCE IN MATCH CLASS
     std::cout << "\n>>> [3] MATCH FORMATS (Inheritance & Runtime Polymorphism)\n";
