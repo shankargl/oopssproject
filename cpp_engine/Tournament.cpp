@@ -75,9 +75,26 @@ struct MatchRecord {
 };
 
 /**
+ * Fixture Item representation including Stage and Placeholders for Playoffs
+ */
+struct FixtureItem {
+    int matchNumber;
+    std::string stage; // "Round-Robin", "Semifinal 1", "Semifinal 2", "Final"
+    std::string format;
+    int teamAId;
+    std::string teamAName;
+    int teamBId;
+    std::string teamBName;
+    std::string placeholderA;
+    std::string placeholderB;
+    std::string status; // "Scheduled" or "Pending Qualification"
+};
+
+/**
  * Tournament Class
  * Manages tournament metadata, participating teams, fixture generation,
  * and points table compilation according to ICC cricket tournament rules.
+ * Supports Round-Robin group stage + Playoffs (SF1: 1st vs 3rd, SF2: 2nd vs 4th, Final).
  */
 class Tournament {
 private:
@@ -86,6 +103,7 @@ private:
     std::string format; // "T20", "ODI", "Test"
     std::vector<Team> teams;
     std::vector<Match*> matches;
+    std::vector<FixtureItem> allFixtures;
 
     static std::string escapeJson(const std::string& input) {
         std::string out;
@@ -110,6 +128,7 @@ public:
             delete m;
         }
         matches.clear();
+        allFixtures.clear();
     }
 
     // Getters and Setters
@@ -124,6 +143,7 @@ public:
 
     const std::vector<Team>& getTeams() const { return teams; }
     const std::vector<Match*>& getMatches() const { return matches; }
+    const std::vector<FixtureItem>& getAllFixtures() const { return allFixtures; }
 
     // Add team to tournament
     bool addTeam(const Team& team) {
@@ -137,13 +157,15 @@ public:
         return true;
     }
 
-    // Automatic Round-Robin Fixture Generation
+    // Automatic Round-Robin Fixture Generation + Playoff Stage
     // Rules:
-    // 1. Every team plays against every other team exactly once.
-    // 2. Prevent a team from playing against itself.
-    // 3. Prevent creating fixtures with fewer than 2 teams.
+    // 1. Every tournament requires AT LEAST 5 TEAMS to ensure a competitive group stage & top-4 playoffs.
+    // 2. Round-Robin: Every team plays every other team once.
+    // 3. Semifinal 1: Position 1 vs Position 3 (Pending Qualification until all group matches finish).
+    // 4. Semifinal 2: Position 2 vs Position 4 (Pending Qualification until all group matches finish).
+    // 5. Final: Winner SF1 vs Winner SF2 (Pending Qualification until semifinals finish).
     bool generateRoundRobinFixtures() {
-        if (teams.size() < 2) {
+        if (teams.size() < 5) {
             return false;
         }
 
@@ -151,16 +173,71 @@ public:
         int matchNumber = 1;
         size_t n = teams.size();
 
+        // 1. Group Stage: Round Robin
         for (size_t i = 0; i < n; ++i) {
             for (size_t j = i + 1; j < n; ++j) {
-                // Ensure no team plays against itself
                 if (teams[i].getId() == teams[j].getId()) continue;
 
-                // Create polymorphic Match based on tournament format
-                Match* match = createMatch(format, matchNumber++, teams[i], teams[j]);
+                Match* match = createMatch(format, matchNumber, teams[i], teams[j]);
                 matches.push_back(match);
+
+                FixtureItem item;
+                item.matchNumber = matchNumber++;
+                item.stage = "Round-Robin";
+                item.format = format;
+                item.teamAId = teams[i].getId();
+                item.teamAName = teams[i].getName();
+                item.teamBId = teams[j].getId();
+                item.teamBName = teams[j].getName();
+                item.placeholderA = "";
+                item.placeholderB = "";
+                item.status = "Scheduled";
+                allFixtures.push_back(item);
             }
         }
+
+        // 2. Playoff: Semifinal 1 (Position 1 vs Position 3)
+        FixtureItem sf1;
+        sf1.matchNumber = matchNumber++;
+        sf1.stage = "Semifinal 1";
+        sf1.format = format;
+        sf1.teamAId = 0;
+        sf1.teamAName = "Rank 1 (TBD)";
+        sf1.teamBId = 0;
+        sf1.teamBName = "Rank 3 (TBD)";
+        sf1.placeholderA = "Rank 1 (TBD)";
+        sf1.placeholderB = "Rank 3 (TBD)";
+        sf1.status = "Pending Qualification";
+        allFixtures.push_back(sf1);
+
+        // 3. Playoff: Semifinal 2 (Position 2 vs Position 4)
+        FixtureItem sf2;
+        sf2.matchNumber = matchNumber++;
+        sf2.stage = "Semifinal 2";
+        sf2.format = format;
+        sf2.teamAId = 0;
+        sf2.teamAName = "Rank 2 (TBD)";
+        sf2.teamBId = 0;
+        sf2.teamBName = "Rank 4 (TBD)";
+        sf2.placeholderA = "Rank 2 (TBD)";
+        sf2.placeholderB = "Rank 4 (TBD)";
+        sf2.status = "Pending Qualification";
+        allFixtures.push_back(sf2);
+
+        // 4. Playoff: Grand Final (Winner SF1 vs Winner SF2)
+        FixtureItem fin;
+        fin.matchNumber = matchNumber++;
+        fin.stage = "Final";
+        fin.format = format;
+        fin.teamAId = 0;
+        fin.teamAName = "Winner of SF1";
+        fin.teamBId = 0;
+        fin.teamBName = "Winner of SF2";
+        fin.placeholderA = "Winner of SF1";
+        fin.placeholderB = "Winner of SF2";
+        fin.status = "Pending Qualification";
+        allFixtures.push_back(fin);
+
         return true;
     }
 
@@ -240,16 +317,16 @@ public:
                       << " (" << t.getPlayerCount() << " players)\n";
         }
         std::cout << "------------------------------------------------------------\n";
-        std::cout << "Generated Fixtures (" << matches.size() << " total):\n";
-        for (const auto* m : matches) {
-            std::cout << "  Match #" << m->getMatchId() << ": "
-                      << m->getTeamA().getName() << " vs " << m->getTeamB().getName()
-                      << " [" << m->getFormat() << "]\n";
+        std::cout << "Generated Fixtures (" << allFixtures.size() << " total):\n";
+        for (const auto& f : allFixtures) {
+            std::cout << "  Match #" << f.matchNumber << " [" << f.stage << "]: "
+                      << f.teamAName << " vs " << f.teamBName
+                      << " (" << f.status << ")\n";
         }
         std::cout << "============================================================\n";
     }
 
-    // JSON serialization of generated fixtures
+    // JSON serialization of generated fixtures (including playoffs)
     std::string fixturesToJson() const {
         std::ostringstream ss;
         ss << "{"
@@ -257,17 +334,22 @@ public:
            << "\"tournament_id\":" << id << ","
            << "\"tournament_name\":\"" << escapeJson(name) << "\","
            << "\"format\":\"" << escapeJson(format) << "\","
-           << "\"total_fixtures\":" << matches.size() << ","
+           << "\"total_fixtures\":" << allFixtures.size() << ","
            << "\"fixtures\":[";
-        for (size_t i = 0; i < matches.size(); ++i) {
+        for (size_t i = 0; i < allFixtures.size(); ++i) {
             if (i > 0) ss << ",";
+            const auto& f = allFixtures[i];
             ss << "{"
-               << "\"match_number\":" << matches[i]->getMatchId() << ","
-               << "\"format\":\"" << escapeJson(matches[i]->getFormat()) << "\","
-               << "\"team_a_id\":" << matches[i]->getTeamA().getId() << ","
-               << "\"team_a_name\":\"" << escapeJson(matches[i]->getTeamA().getName()) << "\","
-               << "\"team_b_id\":" << matches[i]->getTeamB().getId() << ","
-               << "\"team_b_name\":\"" << escapeJson(matches[i]->getTeamB().getName()) << "\""
+               << "\"match_number\":" << f.matchNumber << ","
+               << "\"stage\":\"" << escapeJson(f.stage) << "\","
+               << "\"format\":\"" << escapeJson(f.format) << "\","
+               << "\"team_a_id\":" << f.teamAId << ","
+               << "\"team_a_name\":\"" << escapeJson(f.teamAName) << "\","
+               << "\"team_b_id\":" << f.teamBId << ","
+               << "\"team_b_name\":\"" << escapeJson(f.teamBName) << "\","
+               << "\"placeholder_a\":\"" << escapeJson(f.placeholderA) << "\","
+               << "\"placeholder_b\":\"" << escapeJson(f.placeholderB) << "\","
+               << "\"status\":\"" << escapeJson(f.status) << "\""
                << "}";
         }
         ss << "]}";
